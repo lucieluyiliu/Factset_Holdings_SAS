@@ -117,3 +117,60 @@ left join factset.sym_ticker_region g
 where a.fsym_id=b1.fsym_id
 and b1.factset_entity_id=c1.factset_entity_id
 order by fsym_ID;
+
+
+/*Firm-level identifiers*/
+/*To be ran after Step2 firm-level ownership*/
+
+* Fetch Principal Security;
+proc sql;
+create table home.principal_security as
+select *
+from factset.sym_coverage a
+left join factset.own_sec_entity_eq b on a.fsym_id eq b.fsym_id
+where b.factset_entity_id in (select distinct company_id from home.v2_holdingsall_firm)
+and b.factset_entity_id is not missing
+and a.fsym_id eq a.fsym_primary_equity_id
+order by b.factset_entity_id;
+
+* Remaining securities (Share & Prefeq);
+proc sql;
+create table home.remaining_securities as
+select *
+from factset.sym_coverage a
+left join factset.own_sec_entity_eq b on a.fsym_id eq b.fsym_id
+where b.factset_entity_id in (select distinct company_id from home.v2_holdingsall_firm)
+and b.factset_entity_id not in (select factset_entity_id from home.principal_security)
+and b.factset_entity_id is not missing
+and a.fref_security_type in ('SHARE','PREFEQ')
+order by b.factset_entity_id, a.active_flag desc, a.fref_security_type desc;
+
+
+proc sql;
+create table security_entity1 as
+select factset_entity_id, fsym_id from home.principal_security
+union all
+select factset_entity_id, fsym_id from home.remaining_securities;
+
+proc sql;
+create table security_entity as
+select a.*, b.fsym_primary_listing_id
+from security_entity1 a
+left join factset.sym_coverage b on a.fsym_id eq b.fsym_id;
+
+proc sql;
+create table home.entity_identifiers as
+select a.*, 
+	   case
+	      when b.isin is missing then c.isin
+		  else b.isin
+	   end as isin, 
+	   d.cusip,
+	   e.sedol,
+	   f.ticker_region
+from security_entity a
+left join factset.sym_isin b on a.fsym_id eq b.fsym_id
+left join factset.sym_xc_isin c on a.fsym_id eq c.fsym_id
+left join factset.sym_cusip d on a.fsym_id eq d.fsym_id
+left join factset.sym_sedol e on a.fsym_primary_listing_id eq e.fsym_id
+left join factset.sym_ticker_region f on a.fsym_primary_listing_id eq f.fsym_id;

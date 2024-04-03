@@ -585,11 +585,6 @@ run;
 
 /*#8. Institution-firm level invesetment horizon*/
 
-data temp;
-    set home.v1_holdingsall;
-    if adj_holding > 0 then non_zero_holdings = 1;
-    else non_zero_holdings = 0;
-run;
 
 data home.investment_horizon (keep=factset_entity_id fsym_id horizon quarter);
     set home.v1_holdingsall;
@@ -602,16 +597,6 @@ data home.investment_horizon (keep=factset_entity_id fsym_id horizon quarter);
     else horizon = 1;
 run;
 
-proc sort data=temp; by factset_entity_id fsym_id quarter; run;
-
-data home.investment_horizon(keep=factset_entity_id fsym_id horizon quarter);
-    retain horizon 0;
-    set temp;
-    by factset_entity_id fsym_id;
-    if first.fsym_id then horizon = 0;
-    if non_zero_holdings = 1 then horizon + 1;
-    else horizon = 0;
-run;
 
 proc sort data=home.investment_horizon; by factset_entity_id fsym_id quarter; run;
 

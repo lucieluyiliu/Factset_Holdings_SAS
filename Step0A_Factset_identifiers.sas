@@ -7,17 +7,18 @@
 
 options dlcreatedir;
 
-libname factset ('F:/factset/own_v5','F:/factset/common');
+libname factset ('S:/factset/own_v5','S:/factset/common');
 
-libname home 'D:\factset_work\';
+libname fswork 'S:\FSWORK\';
 
 libname sasuser '~/sasuser.v94';
 
-%include 'D:\factset_holdings\auxiliaries2023.sas';
+%include 'D:\factset_holdings\auxiliaries2024.sas';
+
+proc sql; create table fswork.ctry as select * from ctry;
 
 
-
-data home.funds;
+data fswork.funds;
 
       set factset.own_ent_funds (drop= PE_RATIO PB_RATIO DIVIDEND_YIELD SALES_GROWTH PRICE_MOMENTUM RELATIVE_STRENGTH BETA CURRENT_REPORT_DATE TURNOVER_LABEL);
 
@@ -27,9 +28,9 @@ run;
 
 proc sql;
 
-      create table home.funds as select *, b.fs_ultimate_parent_entity_id
+      create table fswork.funds as select *, b.fs_ultimate_parent_entity_id
 
-      from home.funds a left join factset.edm_standard_entity_structure b
+      from fswork.funds a left join factset.edm_standard_entity_structure b
 
       on a.factset_inst_entity_id = b.factset_entity_id; *all have a parent;
 
@@ -99,6 +100,7 @@ select a.fsym_ID,
 	   d.cusip,
 	   f.sedol,
 	   g.ticker_region,
+	   c1.factset_entity_id,
 	   c1.entity_proper_name
 from sym_identifiers1 a 
 left join factset.sym_isin b

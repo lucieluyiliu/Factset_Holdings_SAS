@@ -9,11 +9,12 @@ options dlcreatedir;
 libname factset ('F:/factset/own_v5','F:/factset/common');
 libname home 'D:/Factset_work/';
 libname sasuser '~/sasuser.v94';
-%include 'D:/jmp_factset_local/auxiliaries2023.sas';
-%include 'D:/jmp_factset_local/functions.sas';
+%include 'D:/factset_holdings/auxiliaries2024.sas';
+%include 'D:/factset_holdings/functions.sas';
 %let exportfolder=D:/jmp/; 
 
 
+libname home clear;
 /*#1. Security-level ownership*/
 
 proc sql;
@@ -86,23 +87,19 @@ select  t1.company_id, t1.quarter, t1.factset_entity_id, t1.sec_country, t1.inst
 		   else 0
 		end as is_dom length=3,
 		case
-		   when t1.inst_origin eq 'US' then 1
+		   when t1.inst_country eq 'US' then 1
 		   else 0
 		end as is_us_inst length=3, 
 		case
-		   when t1.inst_origin eq 'UK' then 1
+		   when t1.inst_origin eq 'NA' then 1
 		   else 0
-		end as is_uk_inst length=3, 
+		end as is_na_inst length=3, 
 		case
-		   when t1.inst_origin eq 'Europe' then 1
+		   when t1.inst_origin eq 'EU' then 1
 		   else 0
-		end as is_eu_inst length=3, 
-		case 
-		   when inst_country in ("FR","DE","NL") then 1 
-		   else 0 
-		end as is_euro_inst length=3,	    
+		end as is_eu_inst length=3, 	    
 		case
-		   when t1.inst_origin eq 'Others' then 1
+		   when t1.inst_origin eq 'OT' then 1
 		   else 0
 		end as is_others_inst length=3, 
 		case 
@@ -152,19 +149,16 @@ select 	company_id,
         /*us*/
         sum(io*is_us_inst) as io_us,
         sum(io*is_us_inst*(1-is_dom)) as io_for_us,
+
+		/*na*/
+        sum(io*is_na_inst) as io_na,
+        sum(io*is_na_inst*(1-is_dom)) as io_for_na,
 		
-		/*uk*/
-		sum(io*is_uk_inst) as io_uk,
-		sum(io*is_uk_inst*(1-is_dom)) as io_for_uk,
 		
 		/*eu*/
 		sum(io*is_eu_inst) as io_eu,
 		sum(io*is_eu_inst*(1-is_dom)) as io_for_eu,
 		
-	    /*euro*/
-	    sum(io*is_euro_inst) as io_euro,
-		sum(io*is_euro_inst*(1-is_dom)) as io_for_euro,
-
 	    /*foreign others*/
 		sum(io*is_others_inst) as io_others,
 		sum(io*is_others_inst*(1-is_dom)) as io_for_others,
@@ -210,7 +204,7 @@ order by a.company_id, a.quarter;
 
 proc sql;
 create table home.holdings_by_firm_ftse as
-select b.* from ctry a, home.holdings_by_firm_all b 
+select b.* from home.ctry a, home.holdings_by_firm_all b 
 where a.iso eq b.sec_country;
 
 /*Annual firm-level ownership*/
@@ -220,8 +214,15 @@ select
 a.*,
 case when iso='US' then 'US' else b.isem end as market,
 int(quarter/100) as year, max(quarter) as maxqtr 
-from home.holdings_by_firm_ftse a, ctry b
+from home.holdings_by_firm_ftse a, home.ctry b
 where a.sec_country=b.iso
 group by factset_entity_id,calculated year, calculated market
 having quarter=calculated maxqtr;
 quit;
+
+
+%let exportfolder=D:\IO-CELu-R\data\;
+
+proc export data=fswork.holdings_by_firm_ftse
+outfile= "&exportfolder.esg_combined.csv"
+replace;run;

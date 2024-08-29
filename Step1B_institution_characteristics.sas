@@ -20,6 +20,7 @@
 * creates dual listed companies, institutional type tables, the list of countries to be considered (MSCI ACWI + Luxembourg (LU));
 options dlcreatedir;
 libname factset ('F:/factset/own_v5','F:/factset/common');
+
 libname home 'D:/Factset_work/';
 libname sasuser '~/sasuser.v94';
 %include 'D:/factset_holdings/auxiliaries2023.sas';
@@ -28,16 +29,19 @@ libname sasuser '~/sasuser.v94';
 
 /*Augmented security-level holding with institution and security label*/
 
+/*Not sure whether should do NA, EU, and Asia Pacific + others instead*/
+
+/*2024-07-12 add io to this table*/
 proc sql;
 create table home.v1_holdingsall_aug as 
-select a.quarter, a.factset_entity_id, a.fsym_id, dollarholding, 
+select a.quarter, a.factset_entity_id, a.fsym_id, io_sec, io_firm, dollarholding, 
 adj_holding, adj_price,
 c.iso_country as sec_country,
 d.iso_country as inst_country,
 e.isem,
-case when inst_country='US' then 'US'
-when inst_country='GB' then 'UK' /*if GB then UK*/
-when f.region contains 'Europe' then 'EU' /*Others go to EU*/
+case when f.region='North America' then 'NA'
+/*when inst_country='GB' then 'UK'*/
+when f.region ='Europe' then 'EU' /*2024-05-29: Merge US and Canada into NA, no longer differentiate UK from European*/
 else 'OT' end as inst_origin, 
 case when sec_country=inst_country then 1 else 0 end as is_dom,
 case when e.isem='DM' then 1 else 0 end as is_dm,
@@ -354,7 +358,7 @@ group by a.factset_entity_id, a.quarter;
 
 proc sql;
 create table home.inst_weight as
-select  a.quarter, a.factset_entity_id, a.fsym_id,  a.dollarholding,
+select  a.quarter, a.factset_entity_id, a.fsym_id,  a.dollarholding, io_sec, io_firm,
 		a.dollarholding/aum as weight, 
          own_mktcap/totalmktcap as mktweight, 
          aum, adj_holding, a.adj_price, 
@@ -558,7 +562,7 @@ run;
 /*2024-03-18: 583,801 after 2023 Dec*/
 proc sql; select count(*) from home.inst_characteristics;
 
-/*2024-03-18: 300,626 after filtering*/
+/*2024-03-18: 300,627 after filtering*/
 
 proc sql;
 create table home.inst_filtered as 
@@ -575,6 +579,7 @@ and n_for>5
 and aum>10
 and hhi<0.2
 and max_consecutive ge 2;
+
 
 proc univariate /*No spike at 0*/
 data=home.inst_filtered;

@@ -14,7 +14,7 @@ options dlcreatedir;
 libname factset ('F:/factset/own_v5','F:/factset/common');
 libname home 'D:/Factset_work/';
 libname sasuser '~/sasuser.v94';
-%include 'D:/factset_holdings/auxiliaries2023.sas';
+%include 'D:/factset_holdings/auxiliaries2024.sas';
 %include 'D:/factset_holdings/functions.sas';
 %let exportfolder=D:/jmp/; 
 
@@ -739,16 +739,16 @@ select  a.factset_entity_id, b.factset_entity_id as company_id, a.quarter,
 		sum(a.io_firm) as io, sum(dollarholding) as dollarholding, 
         cat_institution,
 		case
-	      when c.iso_country eq 'US' then 'US'
-		  when c.iso_country eq 'GB' then 'UK'
-		  when f.region contains 'Europe' and d.iso_country ne 'UK' then 'Europe'
-		  else 'Others'
+	      when f.region eq 'North America' then 'NA'
+/*		  when c.iso_country eq 'GB' then 'UK' 2024-05-29: merge UK and Europe*/
+		  when f.region eq 'Europe' then 'EU'
+		  else 'OT'
     end as inst_origin
 from home.v1_holdingsall a, home.own_basic b,
  factset.edm_standard_entity c, 
  factset.edm_standard_entity d,
  inst_type e,
- ctry f
+ home.ctry f
 where a.fsym_ID eq b.fsym_ID 
 and   a.factset_entity_id eq c.factset_entity_id
 and   b.factset_entity_id eq d.factset_entity_id
@@ -761,7 +761,7 @@ group by a.factset_entity_id, b.factset_entity_id,
 a.quarter, c.iso_country, d.iso_country, c.entity_sub_type, cat_institution, inst_origin;
 
 
-/*Apply firm-level adjustment factor */
+/*Apply firm-level adjustment factor to V2 */
 
 proc sql;
 create table home.v2_holdingsall_firm as 

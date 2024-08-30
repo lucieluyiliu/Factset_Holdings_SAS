@@ -11,12 +11,12 @@
 
 * creates dual listed companies, institutional type tables, the list of countries to be considered (MSCI ACWI + Luxembourg (LU));
 options dlcreatedir;
-libname factset ('F:/factset/own_v5','F:/factset/common');
-libname home 'D:/Factset_work/';
+libname factset ('S:/factset/own_v5','S:/factset/common');
+libname fswork 'S:/FSWORK/';
 libname sasuser '~/sasuser.v94';
 %include 'D:/factset_holdings/auxiliaries2024.sas';
 %include 'D:/factset_holdings/functions.sas';
-%let exportfolder=D:/jmp/; 
+%let exportfolder=S:/FSWORK/; 
 
 
 data mic_exchange;
@@ -99,13 +99,15 @@ proc sort data=own_basic nodupkeys; by fsym_id ; run;
 
 /*add entity name*/
 proc sql;
-create table home.own_basic as select a.*, b.entity_proper_name 
+create table fswork.own_basic as select a.*, b.entity_proper_name 
 from own_basic a left join  factset.edm_standard_entity b 
 on( a.factset_entity_id=b.factset_entity_id); 
 
 * #2. sample range*/
 * starting quarter (YYYY0Q);
 %let sqtr = 200001;
+
+%let eqtr = 202304;
 * ending quarter (YYYY0Q);
 proc sql;
 select year(maxdate)*100+qtr(maxdate) into: eqtr
@@ -123,7 +125,7 @@ quit;
 
 /*last monthly price*/
 proc sql;
-create table home.prices_historical as
+create table fswork.prices_historical as
 select 	 a.fsym_ID, 
 		 year(a.price_date)*100+month(a.price_date) as month,
 		 year(a.price_date)*100+qtr(a.price_date) as quarter,
@@ -146,9 +148,9 @@ order by a.fsym_ID, calculated month;
 * ......................................................................................;
 /*quarterly*/
 proc sql;
-create table home.sec_mktcap as
+create table fswork.sec_mktcap as
 select fsym_ID, quarter, own_mktcap, adj_price, adj_shares_outstanding
-from home.prices_historical
+from fswork.prices_historical
 where mod(month,100) in (3,6,9,12)
 and own_mktcap is not missing;
 
@@ -160,15 +162,17 @@ create table own_mktcap1 as
 select a.*, 
 b.factset_entity_id, b.issue_type, b.fref_security_type, 
 a.adj_price * a.adj_shares_outstanding/1000000 as own_mv, islocal
-from factset.own_sec_prices_eq a, home.own_basic b
+from factset.own_sec_prices_eq a, fswork.own_basic b
 where a.fsym_ID eq b.fsym_ID
-and b.issue_type ne 'AD';
+and b.issue_type ne 'AD' and b.fref_security_type ne 'TEMP';
+/*new filter from Ferreira and Matos that fref_security_type is not TEMP*/
+/*Filtert below removed in latest code*/
 
-
+* exclude securities labeled as "EQ" in ownership but "TEMP" in factset common;
 * exclude unilever ADR classified as "EQ";
 
-proc sql;
-delete from own_mktcap1 where fsym_id eq 'DXVFL5-S' and price_date ge '30SEP2015'd;
+/*proc sql;*/
+/*delete from own_mktcap1 where fsym_id eq 'DXVFL5-S' and price_date ge '30SEP2015'd;*/
 
 
 
@@ -206,7 +210,7 @@ having calculated mktcap_usd is not missing and calculated mktcap_usd gt 0;
 
 proc sort data=hmktcap nodupkeys; by factset_entity_id month; run;
 
-proc sql; create table home.hmktcap as select * from hmktcap;
+proc sql; create table fswork.hmktcap as select * from hmktcap;
 
 
 /*#4 calculate ownership without adjustment */
@@ -215,7 +219,7 @@ proc sql; create table home.hmktcap as select * from hmktcap;
 * 13F Reports;
 * .....................................................................................;
 proc sql;
-create table home.own_inst_13f_detail as 
+create table fswork.own_inst_13f_detail as 
 select factset_entity_id, fsym_id, report_date, year(report_date)*100+qtr(report_date) as quarter, adj_holding
 from factset.own_inst_13f_detail_eq
 where calculated quarter between &sqtr and &eqtr;
@@ -226,27 +230,27 @@ create table max13f as
 select  factset_entity_id, 
 		quarter, 
 		max(report_date) as maxofdlr format=yymmdd10.
-from home.own_inst_13f_detail
+from fswork.own_inst_13f_detail
 group by factset_entity_id, quarter;
 
 /*last report each qtr*/
 proc sql;
-create table home.aux13f as
+create table aux13f as
 select b.*, year(b.report_date)*100+month(b.report_date) as month
-from  max13f a, home.own_inst_13f_detail b
+from  max13f a, fswork.own_inst_13f_detail b
 where a.factset_entity_id eq b.factset_entity_id
 and   a.maxofdlr eq b.report_date;
 
 
 /*here price is the price at the holding month*/
 proc sql;
-create table home.v0_holdings13f as
+create table fswork.v0_holdings13f as
 select t1.factset_entity_id, t1.fsym_ID, t1.quarter, t1.adj_holding, t3.adj_price, t3.adj_shares_outstanding, 
 t1.adj_holding / t3.adj_shares_outstanding as io_sec,
 (t1.adj_holding*t3.adj_price/1000000) / t4.mktcap_usd as io_firm,
 t3.own_mktcap as sec_mv,
 t1.adj_holding*t3.adj_price/1000000 as dollarholding  /*for portfolio weight and identifying global institutions*/
-from home.aux13f t1, home.own_basic t2, home.prices_historical t3, home.hmktcap t4
+from aux13f t1, fswork.own_basic t2, fswork.prices_historical t3, fswork.hmktcap t4
 where t1.fsym_ID eq t2.fsym_ID 
 and t1.fsym_ID eq t3.fsym_ID 
 and t1.month eq t3.month
@@ -256,26 +260,31 @@ and t1.month=t4.month;
 
 /*Koijen*/
 
-data home.v0_holdings13f;
-set home.v0_holdings13f;
+data fswork.v0_holdings13f;
+set fswork.v0_holdings13f;
 if factset_entity_id in ('0FSVG4-E','000V4B-E') then delete;
 run;
 
 /*in case delete erronous entries where holding is larger than security mv*/
-data home.v0_holdings13f;
-set home.v0_holdings13f;
+data fswork.v0_holdings13f;
+set fswork.v0_holdings13f;
 if dollarholding gt sec_mv then delete;
 run;
+
+
+proc sql; select max(quarter) from fswork.v0_holdings13f;
 
 * ......................................................................................;
 * Mutual Funds;
 * .....................................................................................;
 
 proc sql;
-create table home.own_fund_detail as 
+create table fswork.own_fund_detail as 
 select factset_fund_id, fsym_id, report_date, year(report_date)*100+qtr(report_date) as quarter, adj_holding
 from factset.own_fund_detail_eq
 where calculated quarter between &sqtr and &eqtr;
+
+
 
 /*last report date in each quarter*/
 proc sql;
@@ -283,28 +292,28 @@ create table maxmf as
 select  factset_fund_id, 
 		quarter,
 		max(report_date) as maxofdlr  format=yymmdd10.
-from home.own_fund_detail
+from fswork.own_fund_detail
 group by factset_fund_id, quarter;
 
 /*last report in each quarter*/
 proc sql;
-create table home.auxmf as
+create table auxmf as
 select b.*, year(b.report_date)*100+month(b.report_date) as month
-from  maxmf a, home.own_fund_detail b
+from  maxmf a, fswork.own_fund_detail b
 where a.factset_fund_id eq b.factset_fund_id
 and   a.maxofdlr eq b.report_date;
 
 /*Here the price is the price of the holding month*/
 proc sql;
-create table home.v0_holdingsmf as
+create table fswork.v0_holdingsmf as
 select t1.factset_fund_id, t1.fsym_ID, t1.quarter, t1.adj_holding, t3.adj_price, t3.adj_shares_outstanding, 
 t1.adj_holding / t3.adj_shares_outstanding as io_sec,
 (t1.adj_holding*t3.adj_price/1000000) / t4.mktcap_usd as io_firm,
 t3.own_mktcap as sec_mv,
 t1.adj_holding*t3.adj_price/1000000 as dollarholding  /*keep it in case need it for portfolio weight*/
 /*2023-06-25: decided to use rolled over io and market cap for portfolio instead*/
-from home.auxmf t1, home.own_basic t2, home.prices_historical t3,
-home.hmktcap t4
+from auxmf t1, fswork.own_basic t2, fswork.prices_historical t3,
+fswork.hmktcap t4
 where t1.fsym_ID eq t2.fsym_ID 
 and t1.fsym_ID eq t3.fsym_ID 
 and t1.month eq t3.month
@@ -312,26 +321,22 @@ and t1.month = t4.month
 and t2.factset_entity_id=t4.factset_entity_id;
 
 
-
 /*delete outlier*/  
-data home.v0_holdingsmf;
-   set home.v0_holdingsmf;
+data fswork.v0_holdingsmf;
+   set fswork.v0_holdingsmf;
    if factset_fund_id='04B9J7-E' and fsym_id='C7R70B-S' then delete;
 run;
 
-data home.v0_holdingsmf;
-set home.v0_holdingsmf;
+data fswork.v0_holdingsmf;
+set fswork.v0_holdingsmf;
 if dollarholding=. or sec_mv=. then delete;
 run;
 
 /*in case delete erronous entries where holding is larger than security mv*/
-data home.v0_holdingsmf;
-set home.v0_holdingsmf;
+data fswork.v0_holdingsmf;
+set fswork.v0_holdingsmf;
 if dollarholding gt sec_mv then delete;
 run;
-
-proc sql; 
-create table test as select count(*) from home.v0_holdingsmf;
 
 
 /**#5 imputing missing ownership**/
@@ -340,16 +345,16 @@ create table test as select count(*) from home.v0_holdingsmf;
 	proc sql;
 	create table sym_range as
 	select fsym_ID, year(termination_date)*100+qtr(termination_date) as maxofqtr
-	from home.own_basic;
+	from fswork.own_basic;
 
 	proc sql;
 	create table rangeofquarters as
-	select distinct quarter from home.own_inst_13f_detail order by quarter;
+	select distinct quarter from fswork.own_inst_13f_detail order by quarter;
 
 	* 13F;
 	proc sql;
 	create table insts_13f as
-	select distinct factset_entity_id from home.own_inst_13f_detail order by factset_entity_id;
+	select distinct factset_entity_id from fswork.own_inst_13f_detail order by factset_entity_id;
 
 	proc sql;
 	create table insts_13fdates as
@@ -357,12 +362,12 @@ create table test as select count(*) from home.v0_holdingsmf;
 
 	proc sql;
 	create table pairs_13f as
-	select distinct factset_entity_id, quarter, 1 as has_report from home.own_inst_13f_detail order by factset_entity_id, quarter;
+	select distinct factset_entity_id, quarter, 1 as has_report from fswork.own_inst_13f_detail order by factset_entity_id, quarter;
 
 	proc sql;
 	create table entity_minmax as
 	select factset_entity_id, min(quarter) as min_quarter, max(quarter) as max_quarter
-	from home.own_inst_13f_detail
+	from fswork.own_inst_13f_detail
 	group by factset_entity_id;
 
 	proc sql;
@@ -411,63 +416,67 @@ create table test as select count(*) from home.v0_holdingsmf;
 	create table inserts_13f as
 	select b.factset_entity_id, a.quarter, b.fsym_id, b.adj_holding, b.io_sec, b.io_firm 
 	/*rolled up only number of holding and io, not price here maybe this explains churn?*/
-	from fill_13f a, home.v1_holdings13f b, sym_range c
+	from fill_13f a, fswork.v0_holdings13f b, sym_range c
 	where a.factset_entity_id eq b.factset_entity_id and a.last_qtr eq b.quarter
 	and b.fsym_id eq c.fsym_id and a.quarter lt c.maxofqtr;
 	
 /* 	without aggregation, add roll over but do not roll over price */
 	proc sql; 
-	create table home.v1_holdings13f as 
+	create table fswork.v1_holdings13f as 
 
-	select factset_entity_id, fsym_ID, quarter, io_sec, io_firm, adj_holding from home.v0_holdings13f
+	select factset_entity_id, fsym_ID, quarter, io_sec, io_firm, adj_holding from fswork.v0_holdings13f
 			union all corr
 	select factset_entity_id, fsym_ID, quarter, io_sec, io_firm, adj_holding from inserts_13f;
 	
-	proc sort data=home.v1_holdings13f nodupkeys; by factset_entity_id fsym_id quarter; run;
+	proc sort data=fswork.v1_holdings13f nodupkeys; by factset_entity_id fsym_id quarter; run;
 	
-
+proc sql; select count(*) from fswork.sec_mktcap;
 
 	/*assume dollar holding=rolled over io times quarter end mktcap*/
 	proc sql; 
-	create table home.v1_holdings13f as 
+	create table fswork.v1_holdings13f as 
 	select a.factset_entity_id, a.fsym_id, a.quarter, a.adj_holding, b.adj_price,
 /* 	a.adj_holding*adj_price/1000000 as valueholding,  */
 	io_sec, a.io_firm, a.io_sec*b.own_mktcap as dollarholding
 /* 	calculated valueholding-calculated dollarholding as diff */
-	from home.v0_holdings13f a left join home.sec_mktcap b 
+	from fswork.v1_holdings13f a left join fswork.sec_mktcap b 
 	on(a.quarter=b.quarter
 	and a.fsym_id=b.fsym_id);
+
+  proc sql;
+  select count(*) 
+  from fswork.v1_holdings13f
+  where dollarholding ne . and dollarholding ne 0;
+
 	
-	data home.v1_holdings13f;
-    set home.v1_holdings13f;
+	data fswork.v1_holdings13f;
+    set fswork.v1_holdings13f;
     if dollarholding=. or dollarholding=0 then delete;
     run;
 
-	proc sql; select count(*) from home.v1_holdings13f;
-
 
 	proc sql;   /*roll up 13f to their rollup institutions*/
-	create table home.v2_holdings13f as
+	create table fswork.v2_holdings13f as
 	select t2.factset_rollup_entity_id as factset_entity_id, t1.fsym_id, t1.quarter, adj_price,
 	sum(t1.io_sec) as io_sec, 
 	sum(t1.io_firm) as io_firm, 
     sum(dollarholding) as dollarholding, 
 	sum(adj_holding) as adj_holding
-	from home.v1_holdings13f t1,
+	from fswork.v1_holdings13f t1,
 		 factset.own_ent_13f_combined_inst t2
 	where t1.factset_entity_id eq t2.factset_filer_entity_id
 	group by t2.factset_rollup_entity_id, t1.fsym_id, t1.quarter, adj_price;
 	
 
 	
-	proc sort data=home.v2_holdings13f nodupkeys; by factset_entity_id fsym_id quarter; run;
+	proc sort data=fswork.v2_holdings13f nodupkeys; by factset_entity_id fsym_id quarter; run;
 	
 	/*check out here and save aggregated holdings at the institutional level, though not very useful*/
 
 	* Mutual Funds;
 	proc sql;
 	create table insts_mf as
-	select distinct factset_fund_id from home.own_fund_detail order by factset_fund_id;
+	select distinct factset_fund_id from fswork.own_fund_detail order by factset_fund_id;
 
 	proc sql;
 	create table insts_mfdates as
@@ -475,13 +484,15 @@ create table test as select count(*) from home.v0_holdingsmf;
 
 	proc sql;
 	create table pairs_mf as
-	select distinct factset_fund_id, quarter, 1 as has_report from home.own_fund_detail order by factset_fund_id, quarter;
+	select distinct factset_fund_id, quarter, 1 as has_report from fswork.own_fund_detail order by factset_fund_id, quarter;
 
 	proc sql;
 	create table fund_minmax as
 	select factset_fund_id, min(quarter) as min_quarter, max(quarter) as max_quarter
-	from home.own_fund_detail
+	from fswork.own_fund_detail
 	group by factset_fund_id;
+
+	/*I stopped here*/
 
 	proc sql;
 	create table roll1mf as

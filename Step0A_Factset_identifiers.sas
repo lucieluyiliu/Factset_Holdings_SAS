@@ -37,9 +37,9 @@ proc sql;
 
 /*match with fund id*/
 proc sql;
-      create table home.funds as select a.*, b.entity_proper_name as fund_name
+      create table fswork.funds as select a.*, b.entity_proper_name as fund_name
 
-      from home.funds a left join factset.edm_standard_entity b
+      from fswork.funds a left join factset.edm_standard_entity b
 
       on a.factset_fund_id = b.factset_entity_id
 
@@ -49,38 +49,38 @@ proc sql;
 
  /*match with entity id, using managing company's domicile as fund location*/
 proc sql;
-      create table home.funds as select a.*, b.entity_proper_name as entity_name, b.iso_country as iso
+      create table fswork.funds as select a.*, b.entity_proper_name as entity_name, b.iso_country as iso
 
-      from home.funds a left join factset.edm_standard_entity b
+      from fswork.funds a left join factset.edm_standard_entity b
 
       on a.factset_entity_id = b.factset_entity_id; 
 
  
 proc sql;
-      create table home.funds as select a.*, b.entity_proper_name as parent_name
+      create table fswork.funds as select a.*, b.entity_proper_name as parent_name
 
-      from home.funds a left join factset.edm_standard_entity b
+      from fswork.funds a left join factset.edm_standard_entity b
 
       on a.fs_ultimate_parent_entity_id = b.factset_entity_id; 
 quit;
 
 
-proc sort data=home.funds nodupkey; by factset_fund_id; run;
+proc sort data=fswork.funds nodupkey; by factset_fund_id; run;
 
-proc export data= home.funds
-    outfile= 'D:\jmp\factset_funds.csv'
+proc export data= fswork.funds
+    outfile= 'S:\DSWORK\factset_funds.csv'
     replace;run;
 
 
 /*get useful entity information from edm_standard_entity*/
 proc sql;
-create table home.factset_entities as 
+create table fswork.factset_entities as 
 select factset_entity_id, entity_proper_name, iso_country, 
 entity_type, entity_sub_type 
 from factset.edm_standard_entity;
 
-proc export data= home.factset_entities
-    outfile= 'D:\jmp\factset_entities.csv'
+proc export data= fswork.factset_entities
+    outfile= 'S:\FSWORK\factset_entities.csv'
     replace;run;
 
 

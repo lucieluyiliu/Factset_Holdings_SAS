@@ -540,69 +540,73 @@ proc sql; select count(*) from fswork.sec_mktcap;
 	proc sql;
 	create table inserts_mf as
 	select b.factset_fund_id, a.quarter, b.fsym_id, b.adj_holding, b.io_sec, b.io_firm
-	from fill_mf a, home.v0_holdingsmf b, sym_range c
+	from fill_mf a, fswork.v0_holdingsmf b, sym_range c
 	where a.factset_fund_id eq b.factset_fund_id and a.last_qtr eq b.quarter
 	and b.fsym_id eq c.fsym_id and a.quarter lt c.maxofqtr;
 
 
     /*do not rollover price information because legacy price is not useful*/
     proc sql;
-    create table home.v1_holdingsmf as 
-    select factset_fund_id, fsym_ID, quarter, io_sec, io_firm,  adj_holding from home.v0_holdingsmf
+    create table fswork.v1_holdingsmf as 
+    select factset_fund_id, fsym_ID, quarter, io_sec, io_firm,  adj_holding from fswork.v0_holdingsmf
 			union all corr
     select factset_fund_id, fsym_ID, quarter, io_sec, io_firm,  adj_holding from inserts_mf;
     
-    proc sort data=home.v1_holdingsmf nodupkeys; by factset_fund_id fsym_id quarter; run;
+    proc sort data=fswork.v1_holdingsmf nodupkeys; by factset_fund_id fsym_id quarter; run;
 
 
 	proc sql; 
-	create table home.v1_holdingsmf as 
+	create table fswork.v1_holdingsmf as 
 	select a.factset_fund_id, a.fsym_id, a.quarter, a.adj_holding, b.adj_price,
 /* 	a.adj_holding*adj_price/1000000 as valueholding,  */
 	io_sec, io_firm, a.io_sec*b.own_mktcap as dollarholding
 /* 	calculated valueholding-calculated dollarholding as diff */
-	from home.v1_holdingsmf a left join home.sec_mktcap b 
+	from fswork.v1_holdingsmf a left join fswork.sec_mktcap b 
 	on( a.quarter=b.quarter
 	and a.fsym_id=b.fsym_id);
 	
-	proc sort data=home.v1_holdingsmf nodupkeys; by factset_fund_id fsym_id quarter; run;
+	proc sort data=fswork.v1_holdingsmf nodupkeys; by factset_fund_id fsym_id quarter; run;
 	
 	proc sql; 
     CREATE TABLE test AS
-    SELECT count(*) FROM home.v1_holdingsmf 
+    SELECT count(*) FROM fswork.v1_holdingsmf 
     WHERE dollarholding ne . AND dollarholding ne 0;
 
+	proc sql; 
+    CREATE TABLE test AS
+    SELECT count(*) FROM fswork.v1_holdingsmf 
+    WHERE dollarholding is not null;
 
-    data home.v1_holdingsmf;
-    set home.v1_holdingsmf;
+
+    data fswork.v1_holdingsmf;
+    set fswork.v1_holdingsmf;
     if dollarholding=. or dollarholding=0 then delete;
     run;
 
  
 	proc sql;
-	create table home.v2_holdingsmf as
+	create table fswork.v2_holdingsmf as
 	select factset_inst_entity_id as factset_entity_id, fsym_ID, quarter, adj_price,
 	sum(adj_holding) as adj_holding, 
     sum(io_sec) as io_sec,
 	sum(io_firm) as io_firm,
     sum(dollarholding) as dollarholding
-	from home.v1_holdingsmf t1,
+	from fswork.v1_holdingsmf t1,
 			factset.own_ent_funds t2
 	where t1.factset_fund_id eq t2.factset_fund_id
 	group by factset_entity_id, fsym_ID, quarter, adj_price;
 	
-
-	proc sort data=home.v2_holdingsmf nodupkeys; by factset_entity_id fsym_id quarter; run;
+	proc sort data=fswork.v2_holdingsmf nodupkeys; by factset_entity_id fsym_id quarter; run;
 	
 /*remove zero holdings that are not useful*/
 
-data home.v2_holdings13f;
-set home.v2_holdings13f;
+data fswork.v2_holdings13f;
+set fswork.v2_holdings13f;
 if dollarholding=. or dollarholding=0 then delete;
 run;
 
-data home.v2_holdingsmf;
-set home.v2_holdingsmf;
+data fswork.v2_holdingsmf;
+set fswork.v2_holdingsmf;
 if dollarholding=. or dollarholding=0 then delete;
 run;
 
@@ -611,9 +615,9 @@ run;
 
 proc sql;
 create table inst_quarter_mf as
-select distinct factset_entity_id, quarter from home.v2_holdingsmf;
+select distinct factset_entity_id, quarter from fswork.v2_holdingsmf;
 create table inst_quarter_13f as
-select distinct factset_entity_id, quarter from home.v2_holdings13f;
+select distinct factset_entity_id, quarter from fswork.v2_holdings13f;
 
 proc sql;
 create table inst_quarter_mf_only as
@@ -636,7 +640,7 @@ from inst_quarter_mf a, inst_quarter_13f b
 where a.factset_entity_id = b.factset_entity_id and a.quarter = b.quarter;
 
 proc sql;  
-create table home.v1_holdingsall as
+create table fswork.v1_holdingsall as
 select factset_entity_id, fsym_id, quarter, 
 max(io_sec) as io_sec, 
 max(io_firm) as io_firm,
@@ -646,12 +650,12 @@ adj_price
 
 from (
 	select factset_entity_id, fsym_id, quarter, io_sec, io_firm, dollarholding, adj_holding, adj_price 
-    from home.v2_holdings13f
+    from fswork.v2_holdings13f
 
 	union all corr
 
 	select b.factset_entity_id, b.fsym_id, b.quarter, b.io_sec, io_firm, b.dollarholding, b.adj_holding, adj_price
-	from inst_quarter_mf_only a, home.v2_holdingsmf b
+	from inst_quarter_mf_only a, fswork.v2_holdingsmf b
 	where a.factset_entity_id eq b.factset_entity_id
 	and a.quarter eq b.quarter
 
@@ -659,22 +663,21 @@ from (
 
 	select c.factset_entity_id, c.fsym_id, c.quarter, c.io_sec, io_firm, c.dollarholding, c.adj_holding, adj_price
 	
-	from inst_quarter_both a, home.own_basic b, home.v2_holdingsmf c
+	from inst_quarter_both a, fswork.own_basic b, fswork.v2_holdingsmf c
 	where b.iso_country ne 'US' and a.factset_entity_id = c.factset_entity_id
 	and a.quarter = c.quarter and b.fsym_id = c.fsym_id 
 		)
 group by factset_entity_id, fsym_id, quarter, adj_price;
 
 
-proc sort data=home.v1_holdingsall nodupkeys; by factset_entity_id fsym_id quarter; run;
+proc sort data=fswork.v1_holdingsall nodupkeys; by factset_entity_id fsym_id quarter; run;
 
 /*169177664*/
 proc sql; create table count as select count(*) from home.v1_holdingsall;
 
 
 
-
-proc univariate data=home.v1_holdingsall;
+proc univariate data=fswork.v1_holdingsall;
 var io_sec;
 run;
 
@@ -684,9 +687,9 @@ run;
 /*Security level Adj_factor: sum across institutions at security level*/
 
 proc sql;
-create table home.adjfactor_sec as
+create table fswork.adjfactor_sec as
 select fsym_id, quarter, sum(io_sec) as io_sec, max(calculated io_sec, 1) as adjf
-from home.v1_holdingsall 
+from fswork.v1_holdingsall 
 group by fsym_id, quarter;
 quit;
 
@@ -696,9 +699,9 @@ run;
 
 /*Firm-level Adj_factor*/
 proc sql;
-create table home.adjfactor_firm as
+create table fswork.adjfactor_firm as
 select b.factset_entity_id as company_id, quarter, sum(io_firm) as io_firm, max(calculated io_firm, 1) as adjf 
-from home.v1_holdingsall a, home.own_basic b 
+from fswork.v1_holdingsall a, fswork.own_basic b 
 where a.fsym_id=b.fsym_id
 group by company_id, quarter;
 quit;
@@ -711,7 +714,7 @@ run;
 
 /*Make adjustment to security-level ownership, add firm-information and factset market cap*/
 proc sql; 
-create table home.v2_holdingsall_sec as
+create table fswork.v2_holdingsall_sec as
 select 
 a.factset_entity_id, a.fsym_id, 
 d.factset_entity_id as company_id, 
@@ -723,7 +726,7 @@ e.entity_sub_type,
  a.io_sec/adjf as io,
  adj_holding/adjf as adj_holding,
  dollarholding/adjf as dollarholding
-from home.v1_holdingsall a, home.adjfactor_sec b, home.sec_mktcap c, home.own_basic d,
+from fswork.v1_holdingsall a, fswork.adjfactor_sec b, fswork.sec_mktcap c, fswork.own_basic d,
 factset.edm_standard_entity e, factset.edm_standard_entity f
 where a.fsym_id=b.fsym_id
 and a.quarter=b.quarter
@@ -738,28 +741,28 @@ and own_mktcap ne 0
 and d.factset_entity_id is not missing;
 
 
-proc sort data=home.v2_holdingsall_sec nodupkey; by factset_entity_id quarter fsym_id; run;
+proc sort data=fswork.v2_holdingsall_sec nodupkey; by factset_entity_id quarter fsym_id; run;
 
 
 /*Aggregate across securities at the firm_level, add instiution label*/
 
 proc sql;
-create table home.v1_holdingsall_firm as
+create table fswork.v1_holdingsall_firm as
 select  a.factset_entity_id, b.factset_entity_id as company_id, a.quarter, 
 		c.iso_country as inst_country, d.iso_country as sec_country, c.entity_sub_type,
 		sum(a.io_firm) as io, sum(dollarholding) as dollarholding, 
         cat_institution,
 		case
-	      when f.region eq 'North America' then 'NA'
+	      when f.region eq 'North America' then 'North America'
 /*		  when c.iso_country eq 'GB' then 'UK' 2024-05-29: merge UK and Europe*/
-		  when f.region eq 'Europe' then 'EU'
-		  else 'OT'
+		  when f.region eq 'Europe' then 'Europe'
+		  else 'Others'
     end as inst_origin
-from home.v1_holdingsall a, home.own_basic b,
+from fswork.v1_holdingsall a, fswork.own_basic b,
  factset.edm_standard_entity c, 
  factset.edm_standard_entity d,
  inst_type e,
- home.ctry f
+ fswork.ctry f
 where a.fsym_ID eq b.fsym_ID 
 and   a.factset_entity_id eq c.factset_entity_id
 and   b.factset_entity_id eq d.factset_entity_id
@@ -775,14 +778,14 @@ a.quarter, c.iso_country, d.iso_country, c.entity_sub_type, cat_institution, ins
 /*Apply firm-level adjustment factor to V2 */
 
 proc sql;
-create table home.v2_holdingsall_firm as 
+create table fswork.v2_holdingsall_firm as 
 select a.factset_entity_id, a.company_id, a.quarter,a.inst_country, a.sec_country, 
 a.entity_sub_type,
 a.io as io_unadj,
 adjf,
 a.io/adjf as io, 
 a.dollarholding/adjf as dollarholding, a.cat_institution, a.inst_origin
-from home.v1_holdingsall_firm a, home.adjfactor_firm b 
+from fswork.v1_holdingsall_firm a, fswork.adjfactor_firm b 
 where a.company_id=b.company_id 
 and a.quarter=b.quarter;
 
@@ -790,11 +793,11 @@ and a.quarter=b.quarter;
 /*Find principal securities*/
 
 proc sql;
-create table home.principal_security as
+create table fswork.principal_security as
 select *
 from factset.sym_coverage a
 left join factset.own_sec_entity_eq b on a.fsym_id eq b.fsym_id
-where b.factset_entity_id in (select distinct company_id from home.v2_holdingsall_firm)
+where b.factset_entity_id in (select distinct company_id from fswork.v2_holdingsall_firm)
 and b.factset_entity_id is not missing
 and a.fsym_id eq a.fsym_primary_equity_id
 order by b.factset_entity_id;

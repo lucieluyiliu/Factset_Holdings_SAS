@@ -19,9 +19,9 @@
 /*#0. Preamble: include auxiliary tables*/
 * creates dual listed companies, institutional type tables, the list of countries to be considered (MSCI ACWI + Luxembourg (LU));
 options dlcreatedir;
-libname factset ('F:/factset/own_v5','F:/factset/common');
+libname factset ('S:/factset/own_v5','S:/factset/common');
 
-libname home 'D:/Factset_work/';
+libname fswork 'S:/FSWORK/';
 libname sasuser '~/sasuser.v94';
 %include 'D:/factset_holdings/auxiliaries2023.sas';
 %include 'D:/factset_holdings/functions.sas';
@@ -33,22 +33,22 @@ libname sasuser '~/sasuser.v94';
 
 /*2024-07-12 add io to this table*/
 proc sql;
-create table home.v1_holdingsall_aug as 
+create table fswork.v1_holdingsall_aug as 
 select a.quarter, a.factset_entity_id, a.fsym_id, io_sec, io_firm, dollarholding, 
 adj_holding, adj_price,
 c.iso_country as sec_country,
 d.iso_country as inst_country,
 e.isem,
-case when f.region='North America' then 'NA'
+case when f.region='North America' then 'North America'
 /*when inst_country='GB' then 'UK'*/
-when f.region ='Europe' then 'EU' /*2024-05-29: Merge US and Canada into NA, no longer differentiate UK from European*/
-else 'OT' end as inst_origin, 
+when f.region ='Europe' then 'Europe' /*2024-05-29: Merge US and Canada into NA, no longer differentiate UK from European*/
+else 'Others' end as inst_origin, 
 case when sec_country=inst_country then 1 else 0 end as is_dom,
 case when e.isem='DM' then 1 else 0 end as is_dm,
 case when e.isem='EM' then 1 else 0 end as is_em,
 case when e.isem='FM' then 1 else 0 end as is_fm 
-from home.v1_holdingsall a,
-home.own_basic b,
+from fswork.v1_holdingsall a,
+fswork.own_basic b,
 factset.edm_standard_entity c,
 factset.edm_standard_entity d, 
 ctry e, ctry f
@@ -63,7 +63,7 @@ and inst_country=f.iso;
 /*Check distribution*/
 
 proc sql;
-create table home.inst_aum as
+create table fswork.inst_aum as
 select factset_entity_id, quarter, inst_origin,
 sum(dollarholding) as AUM,
 sum(dollarholding*is_dom) as AUM_dom,
@@ -71,13 +71,13 @@ sum(dollarholding*(1-is_dom)*is_dm) as AUM_dm,
 sum(dollarholding*(1-is_dom)*is_em) as AUM_em,
 sum(dollarholding*(1-is_dom)*is_fm) as AUM_fm,
 sum(dollarholding*(1-is_dom)) as AUM_for
-from home.v1_holdingsall_aug
+from fswork.v1_holdingsall_aug
 group by factset_entity_id, quarter, inst_origin;
 
 /*Distribution of AUM EMs*/
-proc sort data=home.inst_aum; by inst_origin; run;
+proc sort data=fswork.inst_aum; by inst_origin; run;
 
-proc univariate data=home.inst_aum;
+proc univariate data=fswork.inst_aum;
 var aum_em;
 by inst_origin;
 histogram;
@@ -86,7 +86,7 @@ run;
 /*#1B. Number of stocks in their portfolio*/ 
 
 proc sql;
-create table home.inst_nsecurities as
+create table fswork.inst_nsecurities as
 select factset_entity_id, quarter, inst_origin,
 sum(1) as n,
 sum(is_dom) as n_dom,
@@ -94,15 +94,15 @@ sum((1-is_dom)*is_dm) as n_dm,
 sum((1-is_dom)*is_em) as n_em,
 sum((1-is_dom)*is_fm) as n_fm,
 sum((1-is_dom)) as n_for
-from home.v1_holdingsall_aug
+from fswork.v1_holdingsall_aug
 group by factset_entity_id, quarter, inst_origin;
 
-proc sort data=home.inst_nsecurities nodupkey; by factset_entity_id quarter; run;
+proc sort data=fswork.inst_nsecurities nodupkey; by factset_entity_id quarter; run;
 
-proc sort data=home.inst_nsecurities; by inst_origin; run;
+proc sort data=fswork.inst_nsecurities; by inst_origin; run;
 
 /*Most do not have foreign em investment*/
-proc univariate data=home.inst_nsecurities;
+proc univariate data=fswork.inst_nsecurities;
 var n_em;
 by inst_origin;
 histogram;
@@ -111,7 +111,7 @@ run;
 /*#1C. Number of firms in their portfolio*/ 
 
 proc sql;
-create table home.inst_nfirms as
+create table fswork.inst_nfirms as
 select a.factset_entity_id, quarter, inst_origin,
 sum(1) as n,
 sum(is_dom) as n_dom,
@@ -119,14 +119,14 @@ sum((1-is_dom)*is_dm) as n_dm,
 sum((1-is_dom)*is_em) as n_em,
 sum((1-is_dom)*is_fm) as n_fm,
 sum((1-is_dom)) as n_for
-from home.v1_holdingsall_aug a, home.principal_security b
+from fswork.v1_holdingsall_aug a, fswork.principal_security b
 where a.fsym_id=b.fsym_id
 group by a.factset_entity_id, quarter, inst_origin;
 
 /*Most do not have foreign em investment*/
-proc sort data=home.inst_nfirms; by inst_origin; run;
+proc sort data=fswork.inst_nfirms; by inst_origin; run;
 
-proc univariate data=home.inst_nfirms;
+proc univariate data=fswork.inst_nfirms;
 var n_em;
 by inst_origin;
 histogram;
@@ -135,116 +135,119 @@ run;
 
 /*country allocation of investors*/
 proc sql; 
-create table home.inst_country_weight as 
+create table fswork.inst_country_weight as 
 select a.factset_entity_id, a.quarter, 
 int(a.quarter/100) as year,
 sum(a.dollarholding)/aum as ctry_weight, inst_country, sec_country, 
 is_dom
-from home.v1_holdingsall_aug a,  home.inst_aum b
+from fswork.v1_holdingsall_aug a,  fswork.inst_aum b
 where a.factset_entity_id=b.factset_entity_id
 and aum ne 0
 and a.quarter=b.quarter
 group by a.factset_entity_id, a.quarter, aum, inst_country, sec_country, is_dom;
 
-proc sort data=home.inst_country_weight nodupkey; by factset_entity_id quarter sec_country;run;
+proc sort data=fswork.inst_country_weight nodupkey; by factset_entity_id quarter sec_country;run;
 
 
 /*#2A. Region weight and classify investors into Global, regional and local*/
 
 proc sql; 
-create table home.inst_region_weight as 
+create table fswork.inst_region_weight as 
 select a.factset_entity_id, a.quarter, sum(a.dollarholding)/aum as region_weight, region
 
-from home.v1_holdingsall_aug a, home.inst_aum b, ctry c
+from fswork.v1_holdingsall_aug a, fswork.inst_aum b, ctry c
 where aum ne 0
 and a.factset_entity_id=b.factset_entity_id
 and a.quarter=b.quarter
 and a.sec_country=c.iso
 group by a.factset_entity_id, a.quarter, aum,  region;
 
-proc sort data=home.inst_region_weight nodupkey; by factset_entity_id quarter region;run;
+proc sort data=fswork.inst_region_weight nodupkey; by factset_entity_id quarter region;run;
+
+proc sql; select distinct region from ctry;
 
 
 /*classify entity and funds by their scope*/
 
 /*Institution level*/
 proc sql;
-create table home.ctryinst as 
+create table fswork.ctryinst as 
 select 
 a.factset_entity_id, a.quarter,a.sec_country, a.ctry_weight, b.maxweight as maxctryweight,
 maxweight ge 0.9 as iscountry
-from home.inst_country_weight a, 
-(select max(ctry_weight) as maxweight, quarter,factset_entity_id from home.inst_country_weight  group by factset_entity_id, quarter ) b
+from fswork.inst_country_weight a, 
+(select max(ctry_weight) as maxweight, quarter,factset_entity_id from fswork.inst_country_weight  group by factset_entity_id, quarter ) b
 where a.ctry_weight=b.maxweight 
 and a.factset_entity_id=b.factset_entity_id 
 and a.quarter=b.quarter;
 
-proc sort data=home.ctryinst nodupkey; by factset_entity_id quarter; run;
+proc sort data=fswork.ctryinst nodupkey; by factset_entity_id quarter; run;
 
 
 
 proc sql;
-create table home.regioninst as 
+create table fswork.regioninst as 
 select 
 a.factset_entity_id, a.quarter,a.region, b.maxweight as maxregionweight,
 b.maxweight ge 0.8 and not iscountry as isregion
-from home.inst_region_weight a, (select max(region_weight) as maxweight, quarter,factset_entity_id from home.inst_region_weight group by factset_entity_id, quarter ) b,
-home.ctryinst c
+from fswork.inst_region_weight a, (select max(region_weight) as maxweight, quarter,factset_entity_id from fswork.inst_region_weight group by factset_entity_id, quarter ) b,
+fswork.ctryinst c
 where a.region_weight=b.maxweight 
 and a.factset_entity_id=b.factset_entity_id 
 and a.factset_entity_id=c.factset_entity_id
 and a.quarter=b.quarter
 and a.quarter=c.quarter;
 
-proc sort data=home.regioninst nodupkey; by factset_entity_id quarter;run;
+proc sort data=fswork.regioninst nodupkey; by factset_entity_id quarter;run;
 
 /*A table that contains global country indicator, its maxim country allocation and its maximum region allocation*/
 
 proc sql;
-create table home.inst_isglobal as 
+create table fswork.inst_isglobal as 
 select a.quarter, a.factset_entity_id, aum, sec_country, 
 case when iscountry is not null then iscountry else 0 end as iscountry, 
 maxctryweight
-from home.inst_aum a 
-left join home.ctryinst b 
+from fswork.inst_aum a 
+left join fswork.ctryinst b 
 on(a.factset_entity_id=b.factset_entity_id and a.quarter=b.quarter);
 
 
 proc sql;
-create table home.inst_isglobal as 
+create table fswork.inst_isglobal as 
 select  a.quarter, a.factset_entity_id, aum, iscountry, sec_country, maxctryweight, region,
 case when isregion is not null then isregion else 0 end as isregion,
 maxregionweight
-from home.inst_isglobal a left join home.regioninst b on(a.factset_entity_id=b.factset_entity_id and a.quarter=b.quarter);
+from fswork.inst_isglobal a left join fswork.regioninst b on(a.factset_entity_id=b.factset_entity_id and a.quarter=b.quarter);
 
-proc sort data=home.inst_isglobal nodupkey; by quarter factset_entity_id;run;
-
-proc sql;
-alter table home.inst_isglobal add isglobal num;
+proc sort data=fswork.inst_isglobal nodupkey; by quarter factset_entity_id;run;
 
 proc sql;
-update home.inst_isglobal
+alter table fswork.inst_isglobal add isglobal num;
+
+proc sql;
+update fswork.inst_isglobal
 set isglobal=1-iscountry-isregion;
 
 /*add investor country */
 proc sql;
-create table home.inst_isglobal as 
+create table fswork.inst_isglobal as 
 select a.*, b.iso_country as inst_country
-from home.inst_isglobal a, factset.edm_standard_entity b 
+from fswork.inst_isglobal a, factset.edm_standard_entity b 
 where a.factset_entity_id=b.factset_entity_id;
 
-proc sql; select max(quarter) from home.inst_isglobal;
+proc sql; select max(quarter) from fswork.inst_isglobal;
 
-
+/*PROC sql;*/
+/*create table test as select * FROM fswork.inst_isglobal WHERE factset_entity_id='000BJX-E' order by quarter;*/
 
 /*Check who are the largest global institutions by end of 2022 and what is their maximum country and region weight*/
 proc sql; 
-create table home.institutiontype2023 as 
+create table fswork.institutiontype2023 as 
 select  a.factset_entity_id, b.entity_proper_name,
 case when iscountry=1 then 'ctry fund'
 when isregion=1 then 'region fund'
 else 'global fund' end as insttype, inst_country, sec_country, maxctryweight, region, maxregionweight, aum 
-from home.inst_isglobal a, factset.edm_standard_entity b
+from fswork.inst_isglobal a, factset.edm_standard_entity b
 where a.factset_entity_id=b.factset_entity_id
 and a.quarter=202304
 order by calculated insttype, aum desc;
@@ -252,10 +255,10 @@ order by calculated insttype, aum desc;
 
 /*What are the biggest country, region and global institution from each country, for sanity check*/
 proc sql; 
-create table home.max_inst_iso_2023 as 
+create table fswork.max_inst_iso_2023 as 
 select a.factset_entity_id, a.entity_proper_name, a.aum, a.inst_country, a.insttype, a.sec_country, a.maxctryweight, a.region, a.maxregionweight
-from home.institutiontype2023 a, 
-(select max(aum) as maxaum, inst_country, insttype from home.institutiontype2023 group by inst_country, insttype) b
+from fswork.institutiontype2023 a, 
+(select max(aum) as maxaum, inst_country, insttype from fswork.institutiontype2023 group by inst_country, insttype) b
 where a.inst_country=b.inst_country
 and a.insttype=b.insttype
 and a.aum=b.maxaum
@@ -269,7 +272,7 @@ create table inst_num_prop as
 select floor(quarter/100) as year, mean(iscountry) as ctryprop, 
 mean(isregion) as regionprop, 
 mean(isglobal) as globalprop 
-from home.inst_isglobal
+from fswork.inst_isglobal
 where mod(quarter,100)=4
 group by calculated year
 order by calculated year desc;
@@ -282,12 +285,12 @@ select floor(quarter/100) as year, sum(iscountry*aum)/sum(aum) as countryfundpro
 sum(isregion*aum)/sum(aum) as regionfundprop,
 sum(isglobal*aum)/sum(aum) as isglobalfundprop
 /* sum(isnonglobalfund*aum)/sum(aum) as isnonglobalfundprop, */
-from home.inst_isglobal 
+from fswork.inst_isglobal 
 group by calculated year
 order by calculated year desc;
 
-proc sort data=inst_aum_prop nodupkey; by quarter; run;
 
+/*2024-09-02 I stopped here*/
 
 /*2B.Home bias*/
 

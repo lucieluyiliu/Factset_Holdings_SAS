@@ -68,8 +68,9 @@ quit;
 proc sort data=fswork.funds nodupkey; by factset_fund_id; run;
 
 proc export data= fswork.funds
-    outfile= 'S:\DSWORK\factset_funds.csv'
+    outfile= 'S:\D=FSWORK\factset_funds.csv'
     replace;run;
+
 
 
 /*get useful entity information from edm_standard_entity*/
@@ -88,10 +89,10 @@ proc export data= fswork.factset_entities
 
 proc sql;
 create table sym_identifiers1 as
-select distinct fsym_ID from home.own_basic;
+select distinct fsym_ID from fswork.own_basic;
 
 proc sql;
-create table home.sym_identifiers as
+create table fswork.sym_identifiers as
 select a.fsym_ID,
 	   case
 	      when b.isin is missing then c.isin
@@ -126,23 +127,24 @@ order by fsym_ID;
 
 * Fetch Principal Security;
 proc sql;
-create table home.principal_security as
+create table fswork.principal_security as
 select *
 from factset.sym_coverage a
 left join factset.own_sec_entity_eq b on a.fsym_id eq b.fsym_id
-where b.factset_entity_id in (select distinct company_id from home.v2_holdingsall_firm)
+where b.factset_entity_id in (select distinct company_id from fswork.v2_holdingsall_firm)
 and b.factset_entity_id is not missing
 and a.fsym_id eq a.fsym_primary_equity_id
 order by b.factset_entity_id;
 
+
 * Remaining securities (Share & Prefeq);
 proc sql;
-create table home.remaining_securities as
+create table fswork.remaining_securities as
 select *
 from factset.sym_coverage a
 left join factset.own_sec_entity_eq b on a.fsym_id eq b.fsym_id
-where b.factset_entity_id in (select distinct company_id from home.v2_holdingsall_firm)
-and b.factset_entity_id not in (select factset_entity_id from home.principal_security)
+where b.factset_entity_id in (select distinct company_id from fswork.v2_holdingsall_firm)
+and b.factset_entity_id not in (select factset_entity_id from fswork.principal_security)
 and b.factset_entity_id is not missing
 and a.fref_security_type in ('SHARE','PREFEQ')
 order by b.factset_entity_id, a.active_flag desc, a.fref_security_type desc;
@@ -150,9 +152,9 @@ order by b.factset_entity_id, a.active_flag desc, a.fref_security_type desc;
 
 proc sql;
 create table security_entity1 as
-select factset_entity_id, fsym_id from home.principal_security
+select factset_entity_id, fsym_id from fswork.principal_security
 union all
-select factset_entity_id, fsym_id from home.remaining_securities;
+select factset_entity_id, fsym_id from fswork.remaining_securities;
 
 proc sql;
 create table security_entity as
@@ -161,7 +163,7 @@ from security_entity1 a
 left join factset.sym_coverage b on a.fsym_id eq b.fsym_id;
 
 proc sql;
-create table home.entity_identifiers as
+create table fswork.entity_identifiers as
 select a.*, 
 	   case
 	      when b.isin is missing then c.isin

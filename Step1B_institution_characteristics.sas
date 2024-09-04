@@ -294,15 +294,24 @@ order by calculated year desc;
 
 /*2B.Home bias*/
 
-/*import country market portfolio weight*/
+/*import country market portfolio weight Datastream+Worldscope*/
+/*Assign country using domicile location*/
 proc import datafile= 'D:/factset_holdings/ctry_mktcap_weight.csv'
-        out=home.mktcap_share
+        out=fswork.mktcap_share
         dbms=csv
         replace;
 
 
+/*Import country market portfolio weight CRSP+Compustat*/
+/*Assign country using listing location*/
+/*proc import datafile= 'S:/FSWORK/ctry_weight_compustat.csv'*/
+/*        out=fswork.ctry_weight_compustat*/
+/*        dbms=csv*/
+/*        replace;*/
+
+
 proc sql;
-create table home.inst_homebias as 
+create table fswork.inst_homebias as 
 select a.factset_entity_id,a.quarter, a.year, inst_country,
 sum(ctry_weight*is_dom) as homeweight,
 calculated homeweight-weight as homebias,
@@ -310,8 +319,8 @@ calculated homeweight-weight as homebias,
 calculated homeweight-weight_float as homebias_float,
 (calculated homeweight-weight_float)/(1-weight_float) as homebias_floatnorm
 
-from home.inst_country_weight a,
-home.mktcap_share b,
+from fswork.inst_country_weight a,
+fswork.mktcap_share b,
 ctry c
 where a.inst_country=c.iso
 and c.iso3=b.iso
@@ -319,23 +328,23 @@ and a.year=b.year
 group by factset_entity_id, a.quarter, a.year, inst_country, weight, weight_float;
 quit;
 
-proc sort data=home.inst_homebias nodupkey; by factset_entity_id quarter; run;
+proc sort data=fswork.inst_homebias nodupkey; by factset_entity_id quarter; run;
 
 
 /*#2C. Foreign bias*/
 
-/*2024-01-21: add foreign bias calcualtion there are two ways Bekaert and Wang (2009) or Chen et al(2005)*/    
+/*2024-01-21: add foreign bias calculation there are two ways Bekaert and Wang (2009) or Chen et al(2005)*/    
 /*Bekaert and Wang normalized foreign bias*/
 /*This includes normalized domestic bias for domestic holdings*/    
 proc sql;
-create table home.inst_foreignbias as 
+create table fswork.inst_foreignbias as 
 select a.factset_entity_id,a.quarter, a.year, inst_country, sec_country,
 case when ctry_weight>weight then (ctry_weight-weight)/(1-weight)
 when ctry_weight<weight then (ctry_weight-weight)/weight
 end as foreign_bias
 
-from home.inst_country_weight a,
-home.mktcap_share b,
+from fswork.inst_country_weight a,
+fswork.mktcap_share b,
 ctry c
 where a.sec_country=c.iso
 and c.iso3=b.iso
@@ -348,10 +357,10 @@ quit;
 /*2024-03-17: do not exclude AD at the security-level to include holdings in both EQ and AD*/
 
 proc sql;
-create table home.inst_totalmktcap as 
+create table fswork.inst_totalmktcap as 
 select a.factset_entity_id,a.quarter,
 sum(own_mktcap) as totalmktcap
-from home.v1_holdingsall a, home.sec_mktcap b 
+from fswork.v1_holdingsall a, fswork.sec_mktcap b 
 where a.fsym_id=b.fsym_id
 and a.quarter=b.quarter
 and own_mktcap gt 0
@@ -360,14 +369,14 @@ group by a.factset_entity_id, a.quarter;
 /*Institution portfolio weights*/
 
 proc sql;
-create table home.inst_weight as
+create table fswork.inst_weight as
 select  a.quarter, a.factset_entity_id, a.fsym_id,  a.dollarholding, io_sec, io_firm,
 		a.dollarholding/aum as weight, 
          own_mktcap/totalmktcap as mktweight, 
          aum, adj_holding, a.adj_price, 
 		inst_country, sec_country, e.entity_sub_type
 
-from home.v1_holdingsall_aug a, home.inst_aum b, home.inst_totalmktcap c, home.sec_mktcap d,
+from fswork.v1_holdingsall_aug a, fswork.inst_aum b, fswork.inst_totalmktcap c, fswork.sec_mktcap d,
 factset.edm_standard_entity e
 where  a.factset_entity_id=b.factset_entity_id
 and a.quarter=b.quarter
@@ -379,32 +388,32 @@ and a.factset_entity_id=e.factset_entity_id;
 quit;
 
 
-proc sort data=home.inst_weight nodupkey; by factset_entity_id fsym_id quarter;run;
+proc sort data=fswork.inst_weight nodupkey; by factset_entity_id fsym_id quarter;run;
 
 /*#4. HHI index of all institutions*/
 proc sql;
-create table home.inst_hhi as 
+create table fswork.inst_hhi as 
 select quarter, factset_entity_id, sum(weight**2) as hhi
-from home.inst_weight
+from fswork.inst_weight
 group by quarter, factset_entity_id;
 
 
-proc univariate data=home.inst_hhi;
+proc univariate data=fswork.inst_hhi;
 var hhi;
 histogram;
 run;
 
 /*#5. Activeness of all institutions*/
 proc sql;
-create table home.inst_activeness as 
+create table fswork.inst_activeness as 
 select  quarter,entity_sub_type, sum(abs(weight-mktweight))/2 as activeshare, 
 factset_entity_id, inst_country
-from home.inst_weight a 
+from fswork.inst_weight a 
 group by quarter,factset_entity_id,entity_sub_type, inst_country;
 quit; 
 
 
-proc univariate data=home.inst_activeness;
+proc univariate data=fswork.inst_activeness;
 var activeshare;
 histogram;
 run;
@@ -412,11 +421,11 @@ run;
 /*#6. Portfolio concentration at institution-security level a la Prado (2016, RFS)*/
 
 proc sql;
-create table home.inst_concentration as 
+create table fswork.inst_concentration as 
 select a.factset_entity_id, a.fsym_id, a.quarter, weight-avg_weight as conc
-from home.inst_weight a, 
+from fswork.inst_weight a, 
 (select factset_entity_id, quarter, mean(weight) as avg_weight
-from home.inst_weight
+from fswork.inst_weight
 group by factset_entity_id, quarter)b 
 where a.factset_entity_id=b.factset_entity_id
 and a.quarter=b.quarter;
@@ -425,7 +434,7 @@ and a.quarter=b.quarter;
 /*#7. Churn Ratio*/
 
 proc sql;
-create table home.inst_churn as 
+create table fswork.inst_churn as 
 select a.quarter, a.factset_entity_id, a.fsym_id,
 a.adj_holding as nshares,
 a.adj_price as price,
@@ -436,7 +445,7 @@ abs((a.adj_holding>b.adj_holding)*(a.adj_holding-b.adj_holding)*a.adj_price) as 
 abs((a.adj_holding<b.adj_holding)*(a.adj_holding-b.adj_holding)*a.adj_price) as trade_sell,
 (a.adj_holding*a.adj_price+b.adj_holding*b.adj_price)/2 as aum 
 
-from home.v1_holdingsall a left join home.v1_holdingsall b 
+from fswork.v1_holdingsall a left join fswork.v1_holdingsall b 
 on (a.factset_entity_id=b.factset_entity_id
 and a.fsym_id=b.fsym_id
 and a.quarter=quarter_add(b.quarter,1)) 
@@ -447,45 +456,47 @@ order by a.factset_entity_id, a.fsym_id, a.quarter;
 
 
 proc sql;
-create table home.inst_churn_ratio as 
+create table fswork.inst_churn_ratio as 
 select quarter, factset_entity_id,
 sum(trade)/sum(aum) as CR, 
 min(sum(trade_buy)/sum(aum), sum(trade_sell)/sum(aum)) as CR_adj
-from home.inst_churn
+from fswork.inst_churn
 group by quarter, factset_entity_id;
 
 proc sql;
-update home.inst_churn_ratio
-set cr=2 where cr>2; /*only 290 instances though*/
+update fswork.inst_churn_ratio
+set cr=2 where cr>2; /*only 196 instances though*/
 
 proc univariate /*spike at 0*/
-data=home.inst_churn_ratio;
+data=fswork.inst_churn_ratio;
 var CR;
 histogram;
 run;
 
 /*Calculate 4-quarter moving average churn ratio*/
-proc sort data=home.inst_churn_ratio; by factset_entity_id quarter; run;
+proc sort data=fswork.inst_churn_ratio; by factset_entity_id quarter; run;
 
-proc expand data=home.inst_churn_ratio out=home.inst_churn_ma method=none;
+proc expand data=fswork.inst_churn_ratio out=fswork.inst_churn_ma method=none;
 id quarter;
 by factset_entity_id;
 convert cr = cr_ma / transout=(movave 4 trimleft 3);
 convert cr_adj = cr_adj_ma / transout=(movave 4 trimleft 3);
 run;
 
+
+
 /*check number of nan CRs*/
 
-proc sql; select sum(cr is null)/sum(1) from home.inst_churn_ratio;
+proc sql; select sum(cr is null)/sum(1) from fswork.inst_churn_ratio;
 
-proc sql; select sum(cr_adj is null)/sum(1) from home.inst_churn_ratio;
+proc sql; select sum(cr_adj is null)/sum(1) from fswork.inst_churn_ratio;
 
-proc sql; select sum(cr_ma is null)/sum(1) from home.inst_churn_ma;
+proc sql; select sum(cr_ma is null)/sum(1) from fswork.inst_churn_ma;
 
-proc sql; select sum(cr_adj_ma is null)/sum(1) from home.inst_churn_ma;
+proc sql; select sum(cr_adj_ma is null)/sum(1) from fswork.inst_churn_ma;
 
 proc univariate 
-data=home.inst_churn_ratio;
+data=fswork.inst_churn_ratio;
 var CR_adj;
 histogram;
 run;
@@ -493,28 +504,28 @@ run;
 /*investor characteristics for filtering*/
 
 proc sql;
-create table home.inst_characteristics as 
+create table fswork.inst_characteristics as 
 select a.factset_entity_id, a.quarter, a.aum, 
 b.homebias, b.homebias_norm, b.homebias_float, b.homebias_floatnorm,
 c.activeshare, d.cr, d.cr_ma,
 d.cr_adj, d.cr_adj_ma, 
 n, n_dom, n_for,
 hhi, isglobal
-from home.inst_aum a 
-left join home.inst_homebias b
+from fswork.inst_aum a 
+left join fswork.inst_homebias b
 on (a.factset_entity_id=b.factset_entity_id and a.quarter=b.quarter)
-left join home.inst_activeness c
+left join fswork.inst_activeness c
 on (a.factset_entity_id=c.factset_entity_id and a.quarter=c.quarter)
-left join home.inst_churn_ma d 
+left join fswork.inst_churn_ma d 
 on (a.factset_entity_id=d.factset_entity_id
 and a.quarter=d.quarter)
-left join home.inst_nsecurities e
+left join fswork.inst_nsecurities e
 on (a.factset_entity_id=e.factset_entity_id 
 and a.quarter=e.quarter)
-left join home.inst_hhi f
+left join fswork.inst_hhi f
 on (a.factset_entity_id=f.factset_entity_id
 and a.quarter=f.quarter)
-left join home.inst_isglobal g
+left join fswork.inst_isglobal g
 on (a.factset_entity_id=g.factset_entity_id
 and a.quarter=g.quarter);
 
@@ -525,14 +536,14 @@ and a.quarter=g.quarter);
 
 /*distinct institution quarterly report*/
 proc sql; 
-create table home.inst_quarter as 
+create table fswork.inst_quarter as 
 select distinct factset_entity_id, quarter
-from home.v1_holdingsall
+from fswork.v1_holdingsall
 order by factset_entity_id, quarter;
 
 
 data consecutive_inst;
-    set home.inst_quarter;
+    set fswork.inst_quarter;
     by factset_entity_id;
     retain consecutive_count 0;
     if first.factset_entity_id then consecutive_count = 1;
@@ -546,14 +557,14 @@ run;
 
 /*Maximum consecutive reports the investor has*/
 proc sql; 
-create table home.consecutive_inst_max as 
+create table fswork.consecutive_inst_max as 
 select factset_entity_id, max(consecutive_count) as max_consecutive
 from consecutive_inst group by factset_entity_id
 order by max_consecutive;
 
 
 proc univariate 
-data=home.consecutive_inst_max;
+data=fswork.consecutive_inst_max;
 var max_consecutive;
 histogram;
 run;
@@ -563,16 +574,17 @@ run;
 
 /*Quarterly frequency*/
 /*2024-03-18: 583,801 after 2023 Dec*/
-proc sql; select count(*) from home.inst_characteristics;
+/*2024-09-04: 593,078 by 2023 Dec after update FactSet*/
+proc sql; select count(*) from fswork.inst_characteristics;
 
 /*2024-03-18: 300,627 after filtering*/
 
 proc sql;
-create table home.inst_filtered as 
+create table fswork.inst_filtered as 
 select a.*, b.*
-from home.inst_characteristics a,
-home.factset_entities b,
-home.consecutive_inst_max c
+from fswork.inst_characteristics a,
+fswork.factset_entities b,
+fswork.consecutive_inst_max c
 where a.factset_entity_id=b.factset_entity_id
 and a.factset_entity_id=c.factset_entity_id
 /*filters*/
@@ -585,7 +597,7 @@ and max_consecutive ge 2;
 
 
 proc univariate /*No spike at 0*/
-data=home.inst_filtered;
+data=fswork.inst_filtered;
 var activeshare;
 histogram;
 run;
@@ -594,8 +606,8 @@ run;
 /*#8. Institution-firm level invesetment horizon*/
 
 
-data home.investment_horizon (keep=factset_entity_id fsym_id horizon quarter);
-    set home.v1_holdingsall;
+data fswork.investment_horizon (keep=factset_entity_id fsym_id horizon quarter);
+    set fswork.v1_holdingsall;
     by factset_entity_id fsym_id;
     retain horizon 0;
     if first.factset_entity_id and first.fsym_id then horizon = 1;
@@ -606,5 +618,6 @@ data home.investment_horizon (keep=factset_entity_id fsym_id horizon quarter);
 run;
 
 
-proc sort data=home.investment_horizon; by factset_entity_id fsym_id quarter; run;
+proc sort data=fswork.investment_horizon; by factset_entity_id fsym_id quarter; run;
+
 

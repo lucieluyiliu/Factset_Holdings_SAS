@@ -28,11 +28,11 @@ run;
 
 proc sql;
 
-      create table fswork.funds as select *, b.fs_ultimate_parent_entity_id
+      create table fswork.funds as select a.*, b.fs_ultimate_parent_entity_id
 
       from fswork.funds a left join factset.edm_standard_entity_structure b
 
-      on a.factset_inst_entity_id = b.factset_entity_id; *all have a parent;
+      on (a.factset_inst_entity_id = b.factset_entity_id); *all have a parent;
 
 
 /*match with fund id*/
@@ -53,7 +53,7 @@ proc sql;
 
       from fswork.funds a left join factset.edm_standard_entity b
 
-      on a.factset_entity_id = b.factset_entity_id; 
+      on a.factset_inst_entity_id = b.factset_entity_id; 
 
  
 proc sql;
@@ -65,10 +65,52 @@ proc sql;
 quit;
 
 
+/*Augment with ticker and fsym_id*/
+proc sql;
+create table fswork.funds as select a.*, b.fund_ticker, b.fund_identifier as fsym_id
+
+from fswork.funds a left join factset.own_ent_fund_identifiers b
+
+on a.factset_fund_id=b.factset_fund_id;
+
+
+/*Augment with other fund info from wrds_securities*/
+
+/*Updated 2025-02-20: use FactSet symbolic tables not wrds securities*/
+/*Security name and security information*/
+
+proc sql;
+create table fswork.funds as 
+select a.factset_fund_id, a.factset_inst_entity_id, fund_name, 
+d.proper_name as security_name, fund_family, entity_name, parent_name, fund_type, style, 
+ etf_type, a.active_flag, fs_ultimate_parent_entity_id, 
+  iso,  fund_ticker, a.fsym_id,  
+ d.currency, 
+d.fref_listing_exchange, d.universe_type, c.cusip, b.isin, e.sedol
+from fswork.funds a 
+left join factset.sym_isin b on a.fsym_id=b.fsym_id
+left join factset.sym_cusip c on a.fsym_id=c.fsym_id
+left join factset.sym_coverage d on a.fsym_id=d.fsym_id
+left join factset.sym_sedol e on e.fsym_id=d.fsym_regional_id
+order by factset_fund_id;
+
+proc sort data=fswork.funds nodupkey; by factset_fund_id fsym_id;  run;
+
+
+proc sql;
+create table test as select * from fswork.funds where excountry is not null;
+
+/*Few instances these two are different*/
+proc sql; 
+select count(*) 
+from fswork.funds 
+where factset_Entity_id ne factset_inst_entity_id;
+
+
 proc sort data=fswork.funds nodupkey; by factset_fund_id; run;
 
 proc export data= fswork.funds
-    outfile= 'S:\D=FSWORK\factset_funds.csv'
+    outfile= 'S:\DFSWORK\factset_funds.csv'
     replace;run;
 
 

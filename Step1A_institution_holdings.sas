@@ -10,17 +10,14 @@
 /*Author: Lucie Lu, lucie.lu@unimelb.edu.au*/
 
 * creates dual listed companies, institutional type tables, the list of countries to be considered (MSCI ACWI + Luxembourg (LU));
-options dlcreatedir;
-libname factset ('S:/factset/own_v5','S:/factset/common');
-libname fswork 'S:/FSWORK/';
-libname sasuser '~/sasuser.v94';
+
 %include 'D:/factset_holdings/auxiliaries2024.sas';
 %include 'D:/factset_holdings/functions.sas';
 %let exportfolder=S:/FSWORK/; 
 
 
 data mic_exchange;
-infile 'D:/jmp/mic_exchange.csv' delimiter = ','
+infile 'D:/factset_holdings/mic_exchange.csv' delimiter = ','
           missover DSD  lrecl = 32767
           firstobs = 2;
 informat ISO $2. ;
@@ -443,6 +440,7 @@ proc sql; select count(*) from fswork.sec_mktcap;
 	on(a.quarter=b.quarter
 	and a.fsym_id=b.fsym_id);
 
+
   proc sql;
   select count(*) 
   from fswork.v1_holdings13f
@@ -674,7 +672,6 @@ proc sort data=fswork.v1_holdingsall nodupkeys; by factset_entity_id fsym_id qua
 
 /*169177664*/
 proc sql; create table count as select count(*) from home.v1_holdingsall;
-
 
 
 proc univariate data=fswork.v1_holdingsall;

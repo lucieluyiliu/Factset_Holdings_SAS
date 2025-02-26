@@ -34,22 +34,23 @@ proc sql;
 
       on (a.factset_inst_entity_id = b.factset_entity_id); *all have a parent;
 
+/*updated 2025-02-26: add fund, entity, parent iso*/
 
 /*match with fund id*/
 proc sql;
-      create table fswork.funds as select a.*, b.entity_proper_name as fund_name
+      create table fswork.funds as select a.*, b.entity_proper_name as fund_name, b.iso_country as fund_iso
 
       from fswork.funds a left join factset.edm_standard_entity b
 
       on a.factset_fund_id = b.factset_entity_id
 
-      WHERE a.factset_fund_id is not null; 
+WHERE a.factset_fund_id is not null; 
 
 
 
  /*match with entity id, using managing company's domicile as fund location*/
 proc sql;
-      create table fswork.funds as select a.*, b.entity_proper_name as entity_name, b.iso_country as iso
+      create table fswork.funds as select a.*, b.entity_proper_name as entity_name, b.iso_country as entity_iso
 
       from fswork.funds a left join factset.edm_standard_entity b
 
@@ -57,7 +58,7 @@ proc sql;
 
  
 proc sql;
-      create table fswork.funds as select a.*, b.entity_proper_name as parent_name
+      create table fswork.funds as select a.*, b.entity_proper_name as parent_name, b.iso_country as parent_iso
 
       from fswork.funds a left join factset.edm_standard_entity b
 
@@ -84,21 +85,86 @@ create table fswork.funds as
 select a.factset_fund_id, a.factset_inst_entity_id, fund_name, 
 d.proper_name as security_name, fund_family, entity_name, parent_name, fund_type, style, 
  etf_type, a.active_flag, fs_ultimate_parent_entity_id, 
-  iso,  fund_ticker, a.fsym_id,  
- d.currency, 
-d.fref_listing_exchange, d.universe_type, c.cusip, b.isin, e.sedol
+  fund_iso, entity_iso, parent_iso,  fund_ticker, a.fsym_id,  
+ d.currency,  d.universe_type, c.cusip, b.isin, e.sedol
+/* d.fref_listing_exchange,*/
+/*f.fref_exchange_location_code as excountry,*/
 from fswork.funds a 
 left join factset.sym_isin b on a.fsym_id=b.fsym_id
 left join factset.sym_cusip c on a.fsym_id=c.fsym_id
 left join factset.sym_coverage d on a.fsym_id=d.fsym_id
-left join factset.sym_sedol e on e.fsym_id=d.fsym_regional_id
-order by factset_fund_id;
+left join factset.sym_sedol e on e.fsym_id=d.fsym_regional_id;
+/*left join factset.fref_sec_exchange_map f on d.fref_listing_exchange=f.fref_exchange_code*/
+/*order by factset_fund_id;*/
 
 proc sort data=fswork.funds nodupkey; by factset_fund_id fsym_id;  run;
+
+proc sql; 
+create table 
+funds_fsym_ids as 
+select factset_fund_id, count(*) as n 
+from fswork.funds 
+group by factset_fund_id
+order by calculated n desc;
+
+proc sql; 
+create table test as 
+select a.*, b.n 
+from fswork.funds a, funds_fsym_ids b 
+where a.factset_fund_id=b.factset_fund_id
+and b.n>1
+order by n desc;
+
+/*proc sql; select count(*) from fswork.funds where fref_listing_exchange is not null;*/
+
+/*proc sql; */
+/*create table test as select * from factset.sym_coverage*/
+/*where fsym_id in (select fsym_id from fswork.funds)*/
+/*and fref_listing_exchange is not null;*/
+
+/*proc sql; */
+/*create table test_wrds as select * from factset.wrds_securities_v3*/
+/*where fsym_id in (select fsym_id from fswork.funds)*/
+/*and fref_listing_exchange is not null;*/
+
+/*Conclusion: no funds have exchange information in factset*/
+
+/*proc sql; select count(*) as n */
+/*from factset.wrds_securities_v3 */
+/*where excountry is not null */
+/*and fsym_id in (select fsym_id from fswork.funds);*/
+/**/
+/*proc sql; select count(*) as n */
+/*from factset.wrds_securities_v3 */
+/*where fref_listing_exchange is not null*/
+/*and fsym_id in (select fsym_id from fswork.funds);*/
+
+
 
 
 proc sql;
 create table test as select * from fswork.funds where excountry is not null;
+
+proc sql;
+create table fund_identifier_distribution as
+select sum(cusip is not null) as n_cusip,
+sum(isin is not null) as n_isin,
+sum(sedol is not null) as n_sedol,
+sum(fund_ticker is not null) as n_ticker, iso
+from fswork.funds
+where iso is not null
+group by iso
+order by calculated n_isin desc;
+
+/*distribution of fund identifiers*/
+proc sql;
+create table wrds_fund_identifiers_dist as 
+select a.iso, sum(b.cusip is not null) as n_cusip_wrds, sum(a.cusip is not null) as n_cusip,
+sum(b.isin is not null) as n_isin_wrds, sum(a.isin is not null) as n_isin,
+sum(b.sedol is not null) as n_sedol_wrds, sum(a.sedol is not null) as n_sedol,
+sum(b.tic is not null) as n_tic, sum(a.fund_ticker is not null) as n_ticker
+from fswork.funds a,  factset.wrds_securities_v3 b 
+where a.fsym_id=b.fsym_id; 
 
 /*Few instances these two are different*/
 proc sql; 
